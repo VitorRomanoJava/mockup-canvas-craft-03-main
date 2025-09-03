@@ -6,17 +6,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import mockupMug from "@/assets/mockup-mug.jpg";
+import { Mug3DViewer } from "@/components/3d/Mug3DViewer";
+
+// ✅ CORREÇÃO: Re-importamos as imagens para os produtos 2D
 import mockupTshirt from "@/assets/mockup-tshirt.jpg";
 import mockupCap from "@/assets/mockup-cap.jpg";
-import { 
-  Upload, 
-  Download, 
-  Coffee, 
-  Shirt, 
-  HardHat, 
-  RotateCw, 
-  Move, 
+
+import {
+  Upload,
+  Download,
+  Coffee,
+  Shirt,
+  HardHat,
+  RotateCw,
+  Move,
   Save,
   Type,
   Sparkles,
@@ -27,8 +30,8 @@ import { useToast } from "@/hooks/use-toast";
 const MockupGeneratorSection = () => {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  
+  const exportTrigger = useRef<() => string | undefined>();
+
   const [selectedProduct, setSelectedProduct] = useState("mug");
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [customText, setCustomText] = useState("");
@@ -40,23 +43,24 @@ const MockupGeneratorSection = () => {
   const [textColor, setTextColor] = useState("#000000");
   const [textFont, setTextFont] = useState("Poppins");
 
+  // ✅ CORREÇÃO: Adicionamos a propriedade 'mockup' de volta onde era necessária
   const products = {
     mug: {
       name: "Caneca",
       icon: Coffee,
-      mockup: mockupMug,
       description: "Caneca branca 325ml"
+      // A caneca não precisa da imagem 2D, pois usa o 3D Viewer
     },
     tshirt: {
       name: "Camiseta",
       icon: Shirt,
-      mockup: mockupTshirt, 
+      mockup: mockupTshirt, // Propriedade adicionada
       description: "Camiseta básica 100% algodão"
     },
     cap: {
       name: "Boné",
       icon: HardHat,
-      mockup: mockupCap,
+      mockup: mockupCap, // Propriedade adicionada
       description: "Boné trucker ajustável"
     }
   };
@@ -70,19 +74,13 @@ const MockupGeneratorSection = () => {
   ];
 
   const googleFonts = [
-    "Poppins",
-    "Inter", 
-    "Montserrat",
-    "Lato",
-    "Roboto",
-    "Oswald",
-    "Playfair Display"
+    "Poppins", "Inter", "Montserrat", "Lato", "Roboto", "Oswald", "Playfair Display"
   ];
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      if (file.size > 10 * 1024 * 1024) {
         toast({
           title: "Arquivo muito grande",
           description: "O arquivo deve ter no máximo 10MB",
@@ -94,6 +92,7 @@ const MockupGeneratorSection = () => {
       const reader = new FileReader();
       reader.onload = (e) => {
         setUploadedImage(e.target?.result as string);
+        setCustomText("");
         toast({
           title: "Upload realizado!",
           description: "Sua imagem foi carregada com sucesso"
@@ -102,37 +101,41 @@ const MockupGeneratorSection = () => {
       reader.readAsDataURL(file);
     }
   };
+  
+  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setCustomText(e.target.value);
+      if (e.target.value) {
+          setUploadedImage(null);
+      }
+  };
 
-  const handleExport = async () => {
-    const previewElement = document.querySelector('.mockup-preview') as HTMLElement;
-    if (!previewElement) return;
-
-    try {
-      // Import html2canvas dynamically
-      const html2canvas = (await import('html2canvas')).default;
-      
-      const canvas = await html2canvas(previewElement, {
-        backgroundColor: null,
-        scale: 2,
-        useCORS: true,
-        allowTaint: true
-      });
-
-      // Create download link
-      const link = document.createElement('a');
-      const timestamp = new Date().toISOString().split('T')[0];
-      link.download = `mockup_${products[selectedProduct].name.toLowerCase()}_${timestamp}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-
-      toast({
-        title: "Mockup exportado!",
-        description: "Seu mockup foi baixado em alta qualidade"
-      });
-    } catch (error) {
+  const handleExport = () => {
+    if (selectedProduct === 'mug' && exportTrigger.current) {
+      const dataUrl = exportTrigger.current();
+      if (dataUrl) {
+        const link = document.createElement('a');
+        const timestamp = new Date().toISOString().split('T')[0];
+        link.download = `mockup_3d_caneca_${timestamp}.png`;
+        link.href = dataUrl;
+        link.click();
+        
+        toast({
+          title: "Mockup 3D exportado!",
+          description: "Seu mockup foi baixado em alta qualidade."
+        });
+      } else {
+        toast({
+            title: "Erro ao gerar imagem",
+            description: "Não foi possível capturar a imagem da cena 3D.",
+            variant: "destructive"
+        });
+      }
+    } else if (selectedProduct !== 'mug') {
+        toast({ title: "Funcionalidade Indisponível", description: "A exportação para este produto ainda não está disponível." });
+    } else {
       toast({
         title: "Erro ao exportar",
-        description: "Tente novamente em alguns segundos",
+        description: "Aguarde a cena 3D carregar completamente.",
         variant: "destructive"
       });
     }
@@ -146,6 +149,8 @@ const MockupGeneratorSection = () => {
   };
 
   const resetDesign = () => {
+    setUploadedImage(null);
+    setCustomText("");
     setDesignPosition({ x: 50, y: 50 });
     setDesignSize([70]);
     setDesignRotation([0]);
@@ -153,8 +158,9 @@ const MockupGeneratorSection = () => {
     setTextSize([24]);
     setTextColor("#000000");
     setTextFont("Poppins");
-    setCustomText("");
   };
+
+  const currentProductInfo = products[selectedProduct as keyof typeof products];
 
   return (
     <section className="py-20 bg-gradient-subtle">
@@ -175,14 +181,9 @@ const MockupGeneratorSection = () => {
 
         <div className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-3 gap-8">
-            {/* Controls Panel */}
             <div className="lg:col-span-1 space-y-6">
-              
-              {/* Product Selection */}
               <Card className="card-elevated">
-                <CardHeader>
-                  <CardTitle className="text-lg">Escolha o Produto</CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle className="text-lg">1. Escolha o Produto</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
                    {Object.entries(products).map(([key, product]) => {
                      const Icon = product.icon;
@@ -197,12 +198,8 @@ const MockupGeneratorSection = () => {
                          }`}
                        >
                          <div className="flex items-center space-x-3">
-                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                             selectedProduct === key ? "gradient-primary" : "bg-muted"
-                           }`}>
-                             <Icon className={`w-5 h-5 ${
-                               selectedProduct === key ? "text-white" : "text-muted-foreground"
-                             }`} />
+                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedProduct === key ? "gradient-primary" : "bg-muted"}`}>
+                             <Icon className={`w-5 h-5 ${selectedProduct === key ? "text-white" : "text-muted-foreground"}`} />
                            </div>
                            <div>
                              <div className="font-semibold text-sm">{product.name}</div>
@@ -212,316 +209,91 @@ const MockupGeneratorSection = () => {
                        </button>
                      );
                    })}
-                   
-                    {/* Ver mais produtos button */}
-                    <Link 
-                      to="/seu-ambiente"
-                      className="w-full p-4 rounded-lg gradient-primary text-white hover:shadow-glow transition-smooth text-center hover:scale-105 font-semibold"
-                    >
-                      <div className="flex items-center justify-center space-x-2">
-                        <Sparkles className="w-4 h-4" />
-                        <span className="text-sm">Ver mais produtos</span>
-                      </div>
-                    </Link>
                 </CardContent>
               </Card>
 
-              {/* Upload Section */}
               <Card className="card-elevated">
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2 text-lg">
-                    <Upload className="w-5 h-5" />
-                    <span>Upload do Design</span>
-                  </CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle className="flex items-center space-x-2 text-lg"><Upload className="w-5 h-5" /><span>2. Faça o Upload</span></CardTitle></CardHeader>
                 <CardContent>
-                  <div 
-                    className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary transition-smooth cursor-pointer"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {uploadedImage ? (
-                      <div className="space-y-3">
-                        <img 
-                          src={uploadedImage} 
-                          alt="Design preview" 
-                          className="w-16 h-16 object-cover rounded-lg mx-auto"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Clique para alterar
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="w-12 h-12 gradient-primary rounded-lg flex items-center justify-center mx-auto">
-                          <Upload className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm mb-1">Faça upload</p>
-                          <p className="text-xs text-muted-foreground">PNG, JPG até 10MB</p>
-                        </div>
-                      </div>
-                    )}
+                  <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary transition-smooth cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                    {uploadedImage ? (<div className="space-y-3"><img src={uploadedImage} alt="Design preview" className="w-16 h-16 object-cover rounded-lg mx-auto" /><p className="text-xs text-muted-foreground">Clique para alterar</p></div>) : (<div className="space-y-3"><div className="w-12 h-12 gradient-primary rounded-lg flex items-center justify-center mx-auto"><Upload className="w-6 h-6 text-white" /></div><div><p className="font-semibold text-sm mb-1">Upload de Imagem</p><p className="text-xs text-muted-foreground">PNG, JPG até 10MB</p></div></div>)}
                   </div>
-                  <Input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
+                  <Input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                 </CardContent>
               </Card>
 
-              {/* Text Section */}
               <Card className="card-elevated">
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2 text-lg">
-                    <Type className="w-5 h-5" />
-                    <span>Texto Personalizado</span>
-                  </CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle className="flex items-center space-x-2 text-lg"><Type className="w-5 h-5" /><span>OU Adicione Texto</span></CardTitle></CardHeader>
                 <CardContent>
-                  <Input
-                    placeholder="Digite seu texto..."
-                    value={customText}
-                    onChange={(e) => setCustomText(e.target.value)}
-                    className="mb-4"
-                  />
+                  <Input placeholder="Digite seu texto..." value={customText} onChange={handleTextChange} className="mb-4" />
                    {customText && (
                      <div className="space-y-4">
-                       <div className="space-y-2">
-                         <Label>Tamanho: {textSize[0]}px</Label>
-                         <Slider
-                           value={textSize}
-                           onValueChange={setTextSize}
-                           min={12}
-                           max={48}
-                           step={2}
-                         />
-                       </div>
-                       
-                       <div className="space-y-2">
-                         <Label>Posição X: {textPosition.x}%</Label>
-                         <Slider
-                           value={[textPosition.x]}
-                           onValueChange={(value) => setTextPosition(prev => ({ ...prev, x: value[0] }))}
-                           min={0}
-                           max={100}
-                           step={5}
-                         />
-                       </div>
-                       
-                       <div className="space-y-2">
-                         <Label>Posição Y: {textPosition.y}%</Label>
-                         <Slider
-                           value={[textPosition.y]}
-                           onValueChange={(value) => setTextPosition(prev => ({ ...prev, y: value[0] }))}
-                           min={0}
-                           max={100}
-                           step={5}
-                         />
-                       </div>
-                       
-                       <div className="space-y-2">
-                         <Label className="flex items-center space-x-2">
-                           <Palette className="w-4 h-4" />
-                           <span>Cor do Texto</span>
-                         </Label>
-                         <div className="flex gap-2 flex-wrap">
-                           {brandColors.map((color) => (
-                             <button
-                               key={color.value}
-                               onClick={() => setTextColor(color.value)}
-                               className={`w-8 h-8 rounded-lg border-2 transition-smooth hover:scale-110 ${
-                                 textColor === color.value ? 'border-primary' : 'border-border'
-                               }`}
-                               style={{ backgroundColor: color.value }}
-                               title={color.name}
-                             />
-                           ))}
-                           <input
-                             type="color"
-                             value={textColor}
-                             onChange={(e) => setTextColor(e.target.value)}
-                             className="w-8 h-8 rounded-lg border-2 border-border cursor-pointer"
-                           />
-                         </div>
-                       </div>
-                       
-                       <div className="space-y-2">
-                         <Label>Fonte</Label>
-                         <Select value={textFont} onValueChange={setTextFont}>
-                           <SelectTrigger>
-                             <SelectValue />
-                           </SelectTrigger>
-                           <SelectContent>
-                             {googleFonts.map((font) => (
-                               <SelectItem key={font} value={font} style={{ fontFamily: font }}>
-                                 {font}
-                               </SelectItem>
-                             ))}
-                           </SelectContent>
-                         </Select>
-                       </div>
+                       <div className="space-y-2"><Label>Tamanho: {textSize[0]}px</Label><Slider value={textSize} onValueChange={setTextSize} min={12} max={48} step={2}/></div>
+                       <div className="space-y-2"><Label>Posição X: {textPosition.x}%</Label><Slider value={[textPosition.x]} onValueChange={(value) => setTextPosition(prev => ({ ...prev, x: value[0] }))} min={0} max={100} step={5}/></div>
+                       <div className="space-y-2"><Label>Posição Y: {textPosition.y}%</Label><Slider value={[textPosition.y]} onValueChange={(value) => setTextPosition(prev => ({ ...prev, y: value[0] }))} min={0} max={100} step={5}/></div>
+                       <div className="space-y-2"><Label className="flex items-center space-x-2"><Palette className="w-4 h-4" /><span>Cor do Texto</span></Label><div className="flex gap-2 flex-wrap">{brandColors.map((color) => (<button key={color.value} onClick={() => setTextColor(color.value)} className={`w-8 h-8 rounded-lg border-2 transition-smooth hover:scale-110 ${textColor === color.value ? 'border-primary' : 'border-border'}`} style={{ backgroundColor: color.value }} title={color.name}/>))}<input type="color" value={textColor} onChange={(e) => setTextColor(e.target.value)} className="w-8 h-8 rounded-lg border-2 border-border cursor-pointer"/></div></div>
+                       <div className="space-y-2"><Label>Fonte</Label><Select value={textFont} onValueChange={setTextFont}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{googleFonts.map((font) => (<SelectItem key={font} value={font} style={{ fontFamily: font }}>{font}</SelectItem>))}</SelectContent></Select></div>
                      </div>
                    )}
                 </CardContent>
               </Card>
 
-              {/* Design Controls */}
               {(uploadedImage || customText) && (
                 <Card className="card-elevated">
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between text-lg">
-                      <div className="flex items-center space-x-2">
-                        <Move className="w-5 h-5" />
-                        <span>Ajustes</span>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={resetDesign}>
-                        <RotateCw className="w-4 h-4" />
-                      </Button>
-                    </CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle className="flex items-center justify-between text-lg"><div className="flex items-center space-x-2"><Move className="w-5 h-5" /><span>3. Ajustes Finais</span></div><Button variant="ghost" size="sm" onClick={resetDesign}><RotateCw className="w-4 h-4" /></Button></CardTitle></CardHeader>
                   <CardContent className="space-y-4">
-                    {uploadedImage && (
-                      <>
-                        <div className="space-y-2">
-                          <Label>Tamanho: {designSize[0]}%</Label>
-                          <Slider
-                            value={designSize}
-                            onValueChange={setDesignSize}
-                            min={20}
-                            max={150}
-                            step={5}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Rotação: {designRotation[0]}°</Label>
-                          <Slider
-                            value={designRotation}
-                            onValueChange={setDesignRotation}
-                            min={-180}
-                            max={180}
-                            step={15}
-                          />
-                        </div>
-                      </>
-                    )}
+                    <div className="space-y-2"><Label>Tamanho: {designSize[0]}%</Label><Slider value={designSize} onValueChange={setDesignSize} min={20} max={150} step={5}/></div>
+                    <div className="space-y-2"><Label>Rotação: {designRotation[0]}°</Label><Slider value={designRotation} onValueChange={setDesignRotation} min={-180} max={180} step={15}/></div>
                   </CardContent>
                 </Card>
               )}
 
-              {/* Action Buttons */}
               {(uploadedImage || customText) && (
-                <div className="space-y-3">
-                  <Button onClick={handleSave} variant="outline" className="w-full">
-                    <Save className="w-4 h-4 mr-2" />
-                    Salvar
-                  </Button>
-                  <Button onClick={handleExport} className="w-full btn-primary">
-                    <Download className="w-4 h-4 mr-2" />
-                    Exportar PNG
-                  </Button>
-                </div>
+                <div className="space-y-3"><Button onClick={handleSave} variant="outline" className="w-full"><Save className="w-4 h-4 mr-2" />Salvar</Button><Button onClick={handleExport} className="w-full btn-primary"><Download className="w-4 h-4 mr-2" />Exportar PNG</Button></div>
               )}
             </div>
 
-            {/* Preview Panel */}
             <div className="lg:col-span-2">
               <Card className="card-elevated h-full">
-                <CardHeader>
-                  <CardTitle className="text-lg">Preview do Mockup</CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle className="text-lg">Preview do Mockup</CardTitle></CardHeader>
                  <CardContent className="p-6">
-                   <div className="aspect-square bg-gradient-subtle rounded-xl p-6 shadow-strong relative overflow-hidden mockup-preview">
-                     <div className="w-full h-full bg-background rounded-lg flex items-center justify-center relative">
-                      
-                      {!uploadedImage && !customText ? (
-                        <div className="w-full h-full relative">
-                          <img 
-                            src={products[selectedProduct].mockup} 
-                            alt={`Mockup de ${products[selectedProduct].name}`}
-                            className="w-full h-full object-contain"
-                          />
-                          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                            <div className="bg-white/95 backdrop-blur-sm px-6 py-3 rounded-lg text-center">
-                              <h3 className="font-heading font-semibold text-lg mb-1">
-                                {products[selectedProduct].name}
-                              </h3>
-                              <p className="text-muted-foreground text-sm">
-                                Faça upload ou adicione texto para começar
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="relative w-full h-full">
-                          {/* Canvas for export functionality */}
-                          <canvas
-                            ref={canvasRef}
-                            width={800}
-                            height={800}
-                            className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
-                          />
-                          
-                          {/* Product Base */}
-                          <img 
-                            src={products[selectedProduct].mockup} 
-                            alt={`Mockup de ${products[selectedProduct].name}`}
-                            className="w-full h-full object-contain"
-                          />
-                          
-                          {/* Uploaded Design Overlay */}
-                          {uploadedImage && (
-                            <div 
-                              className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                              style={{
-                                transform: `translate(${designPosition.x - 50}%, ${designPosition.y - 50}%)`
-                              }}
-                            >
-                              <img
-                                src={uploadedImage}
-                                alt="Design overlay"
-                                className="max-w-none drop-shadow-lg"
-                                style={{
-                                  width: `${designSize[0]}%`,
-                                  transform: `rotate(${designRotation[0]}deg)`
-                                }}
-                              />
-                            </div>
-                          )}
-                          
-                          {/* Text Overlay */}
-                          {customText && (
-                            <div 
-                              className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                              style={{
-                                transform: `translate(${textPosition.x - 50}%, ${textPosition.y - 50}%)`
-                              }}
-                            >
-                               <div
-                                 className="font-bold text-center drop-shadow-lg select-none"
-                                 style={{
-                                   fontSize: `${textSize[0]}px`,
-                                   color: textColor,
-                                   fontFamily: textFont,
-                                   textShadow: textColor === '#FFFFFF' ? '2px 2px 4px rgba(0,0,0,0.8)' : '2px 2px 4px rgba(0,0,0,0.3)'
-                                 }}
-                               >
-                                 {customText}
-                               </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                   <div className="aspect-square bg-gradient-subtle rounded-xl shadow-strong relative overflow-hidden mockup-preview">
+                     {selectedProduct === 'mug' ? (
+                       <Mug3DViewer
+                         onExportReady={(trigger) => (exportTrigger.current = trigger)}
+                         uploadedImage={uploadedImage}
+                         customText={customText}
+                         textColor={textColor}
+                         textFont={textFont}
+                         textSize={textSize[0]}
+                         designSize={designSize[0]}
+                         designRotation={designRotation[0]}
+                         designPosition={uploadedImage ? designPosition : textPosition}
+                       />
+                     ) : (
+                       <div className="w-full h-full bg-background rounded-lg flex items-center justify-center relative">
+                         <img
+      src={products[selectedProduct].mockup} // ✅ LINHA CORRIGIDA
+      alt={`Mockup de ${products[selectedProduct].name}`}
+      className="w-full h-full object-contain"
+    />
+                         <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                           <div className="bg-white/95 backdrop-blur-sm px-6 py-3 rounded-lg text-center">
+                             <h3 className="font-heading font-semibold text-lg mb-1">
+                               Em Breve
+                             </h3>
+                             <p className="text-muted-foreground text-sm">
+                               Visualizador 3D para este produto está em desenvolvimento.
+                             </p>
+                           </div>
+                         </div>
+                       </div>
+                     )}
                   </div>
-
-                  {/* Preview Info */}
                   <div className="mt-4 p-3 bg-muted/30 rounded-lg">
                     <h4 className="font-semibold text-sm mb-2">Especificações:</h4>
                     <ul className="text-xs text-muted-foreground space-y-1">
-                      <li>• Produto: {products[selectedProduct].name}</li>
+                      <li>• Produto: {currentProductInfo.name}</li>
                       <li>• Qualidade: 4K (800x800px preview)</li>
                       <li>• Formato: PNG com transparência</li>
                     </ul>
